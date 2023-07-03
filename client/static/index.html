@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <title>WS Colors Domination</title>
+        <link rel="stylesheet" href="/stylesheets/main.css">
+    </head>
+    <body>
+        <h1>Home Page</h1>
+
+        <script>
+            if(window['WebSocket']){
+                const conn = new WebSocket('ws://' + document.location.host + '/ws');
+                console.log("Attempting Connection...");
+
+                conn.onopen = () => {
+                    console.log("Successfully Connected");
+                    conn.send("Hi From the Client!");
+                }
+                
+                conn.onclose = evt => {
+                    console.log("Socket Closed Connection: ", evt);
+                    conn.send("Client Closed!");
+                }
+
+                conn.onerror = err => {
+                    console.log("Socket Error: ", err);
+                }
+
+                conn.onmessage = evt => {
+                    console.log("received message: ", evt.data);
+                }
+            }
+        </script>
+    </body>
+</html>
