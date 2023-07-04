@@ -2,34 +2,67 @@
 <html>
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>WS Colors Domination</title>
         <link rel="stylesheet" href="/stylesheets/main.css">
     </head>
     <body>
-        <h1>Home Page</h1>
+        <h1>Colors Domination</h1>
+        <button id="btnConnect">Connect to Server</button>
+        <button id="btnCreate">New Game</button>
+        <button id="btnJoin">Join Game</button>
+        <input type="text" id="txtGameId">
+        <div id="divPlayers"></div>
+        <div id="divBoard"></div>
 
         <script>
+            // Game state
+            let wsConn = null;
+            let clientId = null;
+            let gameId = null;
+            let playerColor = null;
+
+            // HTML elements
+            const btnConnect = document.getElementById("btnConnect");
+            const btnCreate = document.getElementById("btnCreate");
+            const btnJoin = document.getElementById("btnJoin");
+            const txtGameId = document.getElementById("txtGameId");
+            const divPlayers = document.getElementById("divPlayers");
+            const divBoard = document.getElementById("divBoard");
+
             if(window['WebSocket']){
-                const conn = new WebSocket('ws://' + document.location.host + '/ws');
-                console.log("Attempting Connection...");
 
-                conn.onopen = () => {
-                    console.log("Successfully Connected");
-                    conn.send("Hi From the Client!");
-                }
+                // HTML events
+                btnConnect.addEventListener("click", e => {
+                    if(wsConn === null){
+                        wsConn = new WebSocket('ws://' + document.location.host + '/ws');
+                        console.log("Attempting Connection...");
+
+                        wsConn.onopen = () => {
+                            console.log("Successfully Connected");
+                        }
                 
-                conn.onclose = evt => {
-                    console.log("Socket Closed Connection: ", evt);
-                    conn.send("Client Closed!");
-                }
+                        wsConn.onclose = evt => {
+                            console.log("Socket Closed Connection: ", evt);
+                        }
 
-                conn.onerror = err => {
-                    console.log("Socket Error: ", err);
-                }
+                        wsConn.onerror = err => {
+                            console.log("Socket Error: ", err);
+                        }
 
-                conn.onmessage = evt => {
-                    console.log("received message: ", evt.data);
-                }
+                        wsConn.onmessage = msg => {
+                            const response = JSON.parse(msg.data);
+
+                            // Handle server messages
+                            // connect
+                            if(response.method === "connect"){
+                                clientId = response.clientId;
+                                console.log("Client id '%s' get Successfully", clientId);
+                            }
+                        }
+                    }
+                });
+                
             }
         </script>
     </body>

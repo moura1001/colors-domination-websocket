@@ -1,6 +1,10 @@
 package websocket
 
-type Message struct {
-	Type int    `json:"type"`
-	Body string `json:"body"`
+type Message map[string]interface{}
+
+func BuildConnectMessage(clientId string) Message {
+	return Message{
+		"method":   "connect",
+		"clientId": clientId,
+	}
 }

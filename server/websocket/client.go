@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"encoding/json"
 	"log"
 
 	"github.com/gorilla/websocket"
@@ -19,13 +20,20 @@ func (c *Client) Read() {
 	}()
 
 	for {
-		msgType, msg, err := c.Conn.ReadMessage()
+		_, msg, err := c.Conn.ReadMessage()
 		if err != nil {
-			log.Printf("error reading from WebSocket client '%s'. Details: '%v'\n", c.ID, err)
+			log.Printf("error reading from client '%s'. Details: '%v'\n", c.ID, err)
 			return
 		}
 
-		message := Message{Type: msgType, Body: string(msg)}
+		var message Message
+		err = json.Unmarshal(msg, &message)
+
+		if err != nil {
+			log.Printf("error decoding message '%s' from client '%s'. Details: '%v'\n", string(msg), c.ID, err)
+			return
+		}
+
 		c.Pool.Broadcast <- message
 	}
 }

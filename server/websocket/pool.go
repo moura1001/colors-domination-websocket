@@ -1,6 +1,8 @@
 package websocket
 
-import "log"
+import (
+	"log"
+)
 
 type Pool struct {
 	Register   chan *Client
@@ -26,6 +28,9 @@ func (pool *Pool) Start() {
 				pool.clients[client.ID] = client
 				log.Printf("client '%s' connected", client.ID)
 				log.Println("Size of Connection Pool has been increased to: ", len(pool.clients))
+
+				content := BuildConnectMessage(client.ID)
+				client.Conn.WriteJSON(content)
 			}
 		case client := <-pool.Unregister:
 			_, exist := pool.clients[client.ID]
@@ -35,7 +40,7 @@ func (pool *Pool) Start() {
 				log.Println("Size of Connection Pool has been decreased to: ", len(pool.clients))
 			}
 		case message := <-pool.Broadcast:
-			log.Println("Received message: ", message.Body)
+			log.Println("Received message: ", message)
 			for clientId, client := range pool.clients {
 				err := client.Conn.WriteMessage(1, []byte("Hi Client!"))
 				if err != nil {
