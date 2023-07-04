@@ -55,11 +55,29 @@
 
                             // Handle server messages
                             // connect
-                            if(response.method === "connect"){
-                                clientId = response.clientId;
-                                console.log("Client id '%s' get Successfully", clientId);
+                            switch(response.method){
+                                case "connect":
+                                    clientId = response.clientId;
+                                    console.log("Client id '%s' get Successfully", clientId);
+                                    break;
+                                case "create":
+                                    gameId = response.game.id;
+                                    const message = "Game Successfully created whith id '%s' and a board with '%d' cells"
+                                    console.log(message, response.game.id, response.game.cells);
+                                    break;
                             }
                         }
+                    }
+                });
+
+                btnCreate.addEventListener("click", e => {
+                    if(wsConn !== null && clientId !== null && gameId === null){
+                        const payLoad = {
+                            "method": "create",
+                            "clientId": clientId
+                        }
+
+                        wsConn.send(JSON.stringify(payLoad))
                     }
                 });
                 

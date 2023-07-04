@@ -2,6 +2,10 @@ package websocket
 
 import (
 	"log"
+
+	"github.com/moura1001/websocket-colors-domination/server/model"
+
+	"github.com/google/uuid"
 )
 
 type Pool struct {
@@ -9,6 +13,7 @@ type Pool struct {
 	Unregister chan *Client
 	clients    map[string]*Client
 	Broadcast  chan Message
+	games      map[string]*model.Game
 }
 
 func NewPool() *Pool {
@@ -17,6 +22,7 @@ func NewPool() *Pool {
 		Unregister: make(chan *Client),
 		clients:    map[string]*Client{},
 		Broadcast:  make(chan Message),
+		games:      map[string]*model.Game{},
 	}
 }
 
@@ -41,12 +47,40 @@ func (pool *Pool) Start() {
 			}
 		case message := <-pool.Broadcast:
 			log.Println("Received message: ", message)
-			for clientId, client := range pool.clients {
-				err := client.Conn.WriteMessage(1, []byte("Hi Client!"))
-				if err != nil {
-					log.Printf("problem send message to client '%s': '%v'\n", clientId, err)
+
+			_, exist := message["method"]
+
+			if exist {
+
+				method, ok := message["method"].(string)
+				if ok {
+					pool.HandleClientMessage(method, message)
 				}
 			}
+		}
+	}
+}
+
+func (pool *Pool) HandleClientMessage(method string, message Message) {
+	switch {
+	case method == "create":
+		clientId, ok := message["clientId"].(string)
+		if ok {
+			clientConn := pool.clients[clientId]
+			if clientConn != nil {
+				gameId := uuid.NewString()
+				game := &model.Game{
+					Id:      gameId,
+					Cells:   uint8(16),
+					Players: []model.Player{},
+				}
+
+				pool.games[gameId] = game
+
+				content := BuildCreateMessage(game)
+				clientConn.Conn.WriteJSON(content)
+			}
+
 		}
 	}
 }
