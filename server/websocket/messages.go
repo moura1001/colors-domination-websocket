@@ -12,9 +12,16 @@ func BuildConnectMessage(clientId string) Message {
 }
 
 func BuildCreateMessage(game *model.Game) Message {
+	return buildGameMessage("create", game)
+}
 
+func BuildJoinMessage(game *model.Game) Message {
+	return buildGameMessage("join", game)
+}
+
+func buildGameMessage(method string, game *model.Game) Message {
 	return Message{
-		"method": "create",
+		"method": method,
 		"game":   game,
 	}
 }

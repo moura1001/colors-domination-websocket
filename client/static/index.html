@@ -54,7 +54,6 @@
                             const response = JSON.parse(msg.data);
 
                             // Handle server messages
-                            // connect
                             switch(response.method){
                                 case "connect":
                                     clientId = response.clientId;
@@ -64,6 +63,57 @@
                                     gameId = response.game.id;
                                     const message = "Game Successfully created whith id '%s' and a board with '%d' cells"
                                     console.log(message, response.game.id, response.game.cells);
+                                    break;
+                                case "join":
+                                    const game = response.game;
+
+                                    // render players info
+                                    while(divPlayers.firstChild)
+                                        divPlayers.removeChild(divPlayers.firstChild)
+                                    
+                                    game.players.forEach(p => {
+                                        const d = document.createElement("div");
+                                        d.style.width = "200px"
+                                        d.style.background = p.color;
+                                        d.textContent = p.clientId;
+                                        divPlayers.appendChild(d);
+
+                                        if(clientId === p.clientId)
+                                            playerColor = p.color;
+                                    });
+
+                                    // render game board
+                                    while(divBoard.firstChild)
+                                        divBoard.removeChild(divBoard.firstChild)
+                                    
+                                    for(let i = 0; i < game.cells; i++){
+                                        const b = document.createElement("button");
+                                        b.id = "cell-" + i;
+                                        b.tag = i;
+                                        b.textContent = i;
+                                        b.style.width = "200px";
+                                        b.style.height = "200px";
+                                        divBoard.appendChild(b);
+                                    }
+
+                                    const numberOfPlayers = game.players.length
+                                    const latestPlayerId = game.players[numberOfPlayers - 1].clientId
+                                    let m = ""
+                                    if(latestPlayerId === clientId){
+                                        m += "You '%s' Successfully joined to the game.\n"
+                                    } else {
+                                        m += "Player '%s' Successfully joined to the game.\n"
+                                    }
+                                    m += "Number of participants in the room: %d\n"
+                                    if(numberOfPlayers < 3)
+                                        m += "Invite more players to complete the number of '3' participants" +
+                                        " for the match or agree with the players in the room to start the challenge."
+                                    else if(numberOfPlayers == 3)
+                                        m += "Room filled with all participants.\n" +
+                                        "Get ready for the start of the match!\n" +
+                                        "A good game for everyone."
+
+                                    console.log(m, latestPlayerId, numberOfPlayers);
                                     break;
                             }
                         }
@@ -75,6 +125,23 @@
                         const payLoad = {
                             "method": "create",
                             "clientId": clientId
+                        }
+
+                        wsConn.send(JSON.stringify(payLoad))
+                    }
+                });
+
+                btnJoin.addEventListener("click", e => {
+                    const inputValue = txtGameId.value.replace(/[\s]+/g, '');
+                    if(gameId === null && inputValue !== ""){
+                        gameId = inputValue;
+                    }
+
+                    if(wsConn !== null && clientId !== null && gameId !== null){
+                        const payLoad = {
+                            "method": "join",
+                            "clientId": clientId,
+                            "gameId": gameId
                         }
 
                         wsConn.send(JSON.stringify(payLoad))

@@ -9,20 +9,22 @@ import (
 )
 
 type Pool struct {
-	Register   chan *Client
-	Unregister chan *Client
-	clients    map[string]*Client
-	Broadcast  chan Message
-	games      map[string]*model.Game
+	Register     chan *Client
+	Unregister   chan *Client
+	clients      map[string]*Client
+	Broadcast    chan Message
+	games        map[string]*model.Game
+	finishSignal chan struct{}
 }
 
 func NewPool() *Pool {
 	return &Pool{
-		Register:   make(chan *Client),
-		Unregister: make(chan *Client),
-		clients:    map[string]*Client{},
-		Broadcast:  make(chan Message),
-		games:      map[string]*model.Game{},
+		Register:     make(chan *Client),
+		Unregister:   make(chan *Client),
+		clients:      map[string]*Client{},
+		Broadcast:    make(chan Message),
+		games:        map[string]*model.Game{},
+		finishSignal: make(chan struct{}),
 	}
 }
 
@@ -54,14 +56,14 @@ func (pool *Pool) Start() {
 
 				method, ok := message["method"].(string)
 				if ok {
-					pool.HandleClientMessage(method, message)
+					pool.handleClientMessage(method, message)
 				}
 			}
 		}
 	}
 }
 
-func (pool *Pool) HandleClientMessage(method string, message Message) {
+func (pool *Pool) handleClientMessage(method string, message Message) {
 	switch {
 	case method == "create":
 		clientId, ok := message["clientId"].(string)
@@ -82,5 +84,32 @@ func (pool *Pool) HandleClientMessage(method string, message Message) {
 			}
 
 		}
+	case method == "join":
+		clientId, okClientId := message["clientId"].(string)
+		gameId, okGameId := message["gameId"].(string)
+		if okClientId && okGameId {
+			game := pool.games[gameId]
+			if game != nil && len(game.Players) < 3 {
+				color := map[uint8]string{0: "red", 1: "green", 2: "blue"}[uint8(len(game.Players))]
+				game.Players = append(game.Players, model.Player{
+					ClientId: clientId,
+					Color:    color,
+				})
+
+				// start game
+				if len(game.Players) == 3 {
+					go pool.updateGameState()
+				}
+
+				content := BuildJoinMessage(game)
+				// loop through all players and tell them that people has joined
+				for _, player := range game.Players {
+					pool.clients[player.ClientId].Conn.WriteJSON(content)
+				}
+			}
+
+		}
 	}
 }
+
+func (pool *Pool) updateGameState() {}
