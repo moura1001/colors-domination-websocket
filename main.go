@@ -10,7 +10,7 @@ import (
 func main() {
 	log.Println("Attempting to start server on port 4000...")
 
-	server.SetupRoutes()
+	server.NewServer().SetupRoutes()
 
 	if err := http.ListenAndServe(":4000", nil); err != nil {
 		log.Fatalf("could not listen on port 4000: %v", err)
