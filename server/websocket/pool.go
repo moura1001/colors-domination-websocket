@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"log"
+	"time"
 
 	"github.com/moura1001/websocket-colors-domination/server/model"
 
@@ -9,22 +10,20 @@ import (
 )
 
 type Pool struct {
-	Register     chan *Client
-	Unregister   chan *Client
-	clients      map[string]*Client
-	Broadcast    chan Message
-	games        map[string]*model.Game
-	finishSignal chan struct{}
+	Register   chan *Client
+	Unregister chan *Client
+	clients    map[string]*Client
+	Broadcast  chan Message
+	games      map[string]*model.Game
 }
 
 func NewPool() *Pool {
 	return &Pool{
-		Register:     make(chan *Client),
-		Unregister:   make(chan *Client),
-		clients:      map[string]*Client{},
-		Broadcast:    make(chan Message),
-		games:        map[string]*model.Game{},
-		finishSignal: make(chan struct{}),
+		Register:   make(chan *Client),
+		Unregister: make(chan *Client),
+		clients:    map[string]*Client{},
+		Broadcast:  make(chan Message),
+		games:      map[string]*model.Game{},
 	}
 }
 
@@ -72,9 +71,10 @@ func (pool *Pool) handleClientMessage(method string, message Message) {
 			if clientConn != nil {
 				gameId := uuid.NewString()
 				game := &model.Game{
-					Id:      gameId,
-					Cells:   uint8(16),
-					Players: []model.Player{},
+					Id:         gameId,
+					Cells:      uint8(16),
+					Players:    []model.Player{},
+					BoardState: map[uint8]string{},
 				}
 
 				pool.games[gameId] = game
@@ -96,20 +96,51 @@ func (pool *Pool) handleClientMessage(method string, message Message) {
 					Color:    color,
 				})
 
-				// start game
-				if len(game.Players) == 3 {
-					go pool.updateGameState()
-				}
-
 				content := BuildJoinMessage(game)
 				// loop through all players and tell them that people has joined
 				for _, player := range game.Players {
 					pool.clients[player.ClientId].Conn.WriteJSON(content)
 				}
+
+				// start game
+				if len(game.Players) == 3 {
+					go pool.updateGameStateForPlayers(game)
+				}
 			}
 
+		}
+	case method == "play":
+		clientId, okClientId := message["clientId"].(string)
+		gameId, okGameId := message["gameId"].(string)
+		cellId, okCellId := message["cellId"].(float64)
+		if okClientId && okGameId && okCellId {
+			var player *model.Player = nil
+			game := pool.games[gameId]
+			if game != nil {
+				for _, p := range game.Players {
+					if p.ClientId == clientId {
+						player = &p
+						break
+					}
+				}
+
+				if player != nil {
+					game.BoardState[uint8(cellId)] = player.Color
+				}
+			}
 		}
 	}
 }
 
-func (pool *Pool) updateGameState() {}
+func (pool *Pool) updateGameStateForPlayers(game *model.Game) {
+	for !game.IsFinished {
+
+		time.Sleep(500 * time.Millisecond)
+
+		content := BuildUpdateMessage(game)
+		// loop through all players and send updated state of the game
+		for _, player := range game.Players {
+			pool.clients[player.ClientId].Conn.WriteJSON(content)
+		}
+	}
+}

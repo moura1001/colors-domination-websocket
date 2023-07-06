@@ -19,6 +19,10 @@ func BuildJoinMessage(game *model.Game) Message {
 	return buildGameMessage("join", game)
 }
 
+func BuildUpdateMessage(game *model.Game) Message {
+	return buildGameMessage("update", game)
+}
+
 func buildGameMessage(method string, game *model.Game) Message {
 	return Message{
 		"method": method,

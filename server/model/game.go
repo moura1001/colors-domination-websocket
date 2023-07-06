@@ -5,6 +5,7 @@ type Game struct {
 	Cells      uint8            `json:"cells"`
 	Players    []Player         `json:"players"`
 	BoardState map[uint8]string `json:"state"`
+	IsFinished bool             `json:"-"`
 }
 
 type Player struct {

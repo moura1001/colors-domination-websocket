@@ -93,6 +93,16 @@
                                         b.textContent = i;
                                         b.style.width = "200px";
                                         b.style.height = "200px";
+                                        b.addEventListener("click", e => {
+                                            b.style.background = playerColor;
+                                            const payLoad = {
+                                                "method": "play",
+                                                "clientId": clientId,
+                                                "gameId": gameId,
+                                                "cellId": b.tag
+                                            }
+                                            wsConn.send(JSON.stringify(payLoad))
+                                        });
                                         divBoard.appendChild(b);
                                     }
 
@@ -114,6 +124,15 @@
                                         "A good game for everyone."
 
                                     console.log(m, latestPlayerId, numberOfPlayers);
+                                    break;
+                                case "update":
+                                    if(!response.game.state)
+                                        return;
+                                    for(const c of Object.keys(response.game.state)){
+                                        const color = response.game.state[c];
+                                        const cellObject = document.getElementById("cell-"+c);
+                                        cellObject.style.backgroundColor = color;
+                                    }
                                     break;
                             }
                         }
