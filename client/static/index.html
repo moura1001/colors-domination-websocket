@@ -31,28 +31,17 @@
             const divBoard = document.getElementById("divBoard");
 
             if(window['WebSocket']){
-
                 // HTML events
                 btnConnect.addEventListener("click", e => {
                     if(wsConn === null){
                         wsConn = new WebSocket('ws://' + document.location.host + '/ws');
                         console.log("Attempting Connection...");
 
-                        wsConn.onopen = () => {
-                            console.log("Successfully Connected");
-                        }
-                
-                        wsConn.onclose = evt => {
-                            console.log("Socket Closed Connection: ", evt);
-                        }
-
-                        wsConn.onerror = err => {
-                            console.log("Socket Error: ", err);
-                        }
-
+                        wsConn.onopen = () => { console.log("Successfully Connected"); }                
+                        wsConn.onclose = evt => { console.log("Socket Closed Connection: ", evt); }
+                        wsConn.onerror = err => { console.log("Socket Error: ", err); }
                         wsConn.onmessage = msg => {
                             const response = JSON.parse(msg.data);
-
                             // Handle server messages
                             switch(response.method){
                                 case "connect":
@@ -66,10 +55,8 @@
                                     break;
                                 case "join":
                                     const game = response.game;
-
                                     // render players info
-                                    while(divPlayers.firstChild)
-                                        divPlayers.removeChild(divPlayers.firstChild)
+                                    while(divPlayers.firstChild) divPlayers.removeChild(divPlayers.firstChild);
                                     
                                     game.players.forEach(p => {
                                         const d = document.createElement("div");
@@ -78,13 +65,11 @@
                                         d.textContent = p.clientId;
                                         divPlayers.appendChild(d);
 
-                                        if(clientId === p.clientId)
-                                            playerColor = p.color;
+                                        if(clientId === p.clientId) playerColor = p.color;
                                     });
 
                                     // render game board
-                                    while(divBoard.firstChild)
-                                        divBoard.removeChild(divBoard.firstChild)
+                                    while(divBoard.firstChild) divBoard.removeChild(divBoard.firstChild);
                                     
                                     for(let i = 0; i < game.cells; i++){
                                         const b = document.createElement("button");
@@ -95,12 +80,7 @@
                                         b.style.height = "200px";
                                         b.addEventListener("click", e => {
                                             b.style.background = playerColor;
-                                            const payLoad = {
-                                                "method": "play",
-                                                "clientId": clientId,
-                                                "gameId": gameId,
-                                                "cellId": b.tag
-                                            }
+                                            const payLoad = { "method": "play", "clientId": clientId, "gameId": gameId, "cellId": b.tag }
                                             wsConn.send(JSON.stringify(payLoad))
                                         });
                                         divBoard.appendChild(b);
@@ -109,25 +89,20 @@
                                     const numberOfPlayers = game.players.length
                                     const latestPlayerId = game.players[numberOfPlayers - 1].clientId
                                     let m = ""
-                                    if(latestPlayerId === clientId){
+                                    if(latestPlayerId === clientId)
                                         m += "You '%s' Successfully joined to the game.\n"
-                                    } else {
-                                        m += "Player '%s' Successfully joined to the game.\n"
-                                    }
+                                    else
+                                        m += "Player '%s' Successfully joined to the game.\n"                                    
                                     m += "Number of participants in the room: %d\n"
                                     if(numberOfPlayers < 3)
-                                        m += "Invite more players to complete the number of '3' participants" +
-                                        " for the match or agree with the players in the room to start the challenge."
+                                        m += "Invite more players to complete the number of '3' participants for the match or agree with the players in the room to start the challenge."
                                     else if(numberOfPlayers == 3)
-                                        m += "Room filled with all participants.\n" +
-                                        "Get ready for the start of the match!\n" +
-                                        "A good game for everyone."
+                                        m += "Room filled with all participants.\n Get ready for the start of the match!\n A good game for everyone."
 
                                     console.log(m, latestPlayerId, numberOfPlayers);
                                     break;
                                 case "update":
-                                    if(!response.game.state)
-                                        return;
+                                    if(!response.game.state) return;
                                     for(const c of Object.keys(response.game.state)){
                                         const color = response.game.state[c];
                                         const cellObject = document.getElementById("cell-"+c);
@@ -141,28 +116,16 @@
 
                 btnCreate.addEventListener("click", e => {
                     if(wsConn !== null && clientId !== null && gameId === null){
-                        const payLoad = {
-                            "method": "create",
-                            "clientId": clientId
-                        }
-
+                        const payLoad = { "method": "create", "clientId": clientId }
                         wsConn.send(JSON.stringify(payLoad))
                     }
                 });
 
                 btnJoin.addEventListener("click", e => {
                     const inputValue = txtGameId.value.replace(/[\s]+/g, '');
-                    if(gameId === null && inputValue !== ""){
-                        gameId = inputValue;
-                    }
-
+                    if(gameId === null && inputValue !== "") gameId = inputValue;
                     if(wsConn !== null && clientId !== null && gameId !== null){
-                        const payLoad = {
-                            "method": "join",
-                            "clientId": clientId,
-                            "gameId": gameId
-                        }
-
+                        const payLoad = { "method": "join", "clientId": clientId, "gameId": gameId }
                         wsConn.send(JSON.stringify(payLoad))
                     }
                 });

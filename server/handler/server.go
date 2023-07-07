@@ -57,6 +57,7 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 	switch {
 	case method == "create":
 		clientId, ok := message["clientId"].(string)
+
 		if ok {
 			clientConn := server.pool.Clients[clientId]
 			if clientConn != nil {
@@ -78,6 +79,7 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 	case method == "join":
 		clientId, okClientId := message["clientId"].(string)
 		gameId, okGameId := message["gameId"].(string)
+
 		if okClientId && okGameId {
 			game := server.games[gameId]
 			if game != nil && len(game.Players) < 3 {
@@ -104,6 +106,7 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 		clientId, okClientId := message["clientId"].(string)
 		gameId, okGameId := message["gameId"].(string)
 		cellId, okCellId := message["cellId"].(float64)
+
 		if okClientId && okGameId && okCellId {
 			var player *model.Player = nil
 			game := server.games[gameId]
