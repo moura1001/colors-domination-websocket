@@ -4,6 +4,8 @@ import "github.com/moura1001/websocket-colors-domination/server/model"
 
 type Message map[string]interface{}
 
+type OnReceivedMessageHandler func(method string, message Message)
+
 func BuildConnectMessage(clientId string) Message {
 	return Message{
 		"method":   "connect",

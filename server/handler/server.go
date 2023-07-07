@@ -130,8 +130,14 @@ func (server *Server) updateGameStateForPlayers(game *model.Game) {
 
 		content := ws.BuildUpdateMessage(game)
 		// loop through all players and send updated state of the game
-		for _, player := range game.Players {
-			server.pool.Clients[player.ClientId].Conn.WriteJSON(content)
+		for i, player := range game.Players {
+			client := server.pool.Clients[player.ClientId]
+			if client != nil && client.Conn != nil {
+				client.Conn.WriteJSON(content)
+			} else {
+				// remove disconnected players from the game
+				game.Players = append(game.Players[:i], game.Players[i+1:]...)
+			}
 		}
 	}
 }

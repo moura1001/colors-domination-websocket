@@ -9,10 +9,10 @@ type Pool struct {
 	Unregister     chan *Client
 	Clients        map[string]*Client
 	Broadcast      chan Message
-	messageHandler func(method string, message Message)
+	messageHandler OnReceivedMessageHandler
 }
 
-func NewPool(messageHandler func(method string, message Message)) *Pool {
+func NewPool(messageHandler OnReceivedMessageHandler) *Pool {
 	return &Pool{
 		Register:       make(chan *Client),
 		Unregister:     make(chan *Client),
