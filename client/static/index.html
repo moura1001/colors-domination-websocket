@@ -79,9 +79,11 @@
                                         b.style.width = "200px";
                                         b.style.height = "200px";
                                         b.addEventListener("click", e => {
-                                            b.style.background = playerColor;
-                                            const payLoad = { "method": "play", "clientId": clientId, "gameId": gameId, "cellId": b.tag }
-                                            wsConn.send(JSON.stringify(payLoad))
+                                            if(gameId !== null){
+                                                b.style.background = playerColor;
+                                                const payLoad = { "method": "play", "clientId": clientId, "gameId": gameId, "cellId": b.tag }
+                                                wsConn.send(JSON.stringify(payLoad))
+                                            }
                                         });
                                         divBoard.appendChild(b);
                                     }
@@ -107,6 +109,20 @@
                                         const color = response.game.state[c];
                                         const cellObject = document.getElementById("cell-"+c);
                                         cellObject.style.backgroundColor = color;
+                                    }
+                                    break;
+                                case "end":
+                                    gameId = null;
+                                    playerColor = null;
+                                    let m2 = "The game has been ended!\n"
+                                    if(response.winner){
+                                        if(response.winner.clientId === clientId){
+                                            m2 += "Congratulations, you are the winner!\n";
+                                            console.log(m2)
+                                        } else{
+                                            m2 += "The winner of the game is the player '%s' with the '%s' color.\n";
+                                            console.log(m2, response.winner.clientId, response.winner.color);
+                                        }
                                     }
                                     break;
                             }

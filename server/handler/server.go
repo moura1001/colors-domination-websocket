@@ -65,7 +65,7 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 				game := &model.Game{
 					Id:         gameId,
 					Cells:      uint8(16),
-					Players:    []model.Player{},
+					Players:    []*model.Player{},
 					BoardState: map[uint8]string{},
 				}
 
@@ -84,9 +84,10 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 			game := server.games[gameId]
 			if game != nil && len(game.Players) < 3 {
 				color := map[uint8]string{0: "red", 1: "green", 2: "blue"}[uint8(len(game.Players))]
-				game.Players = append(game.Players, model.Player{
+				game.Players = append(game.Players, &model.Player{
 					ClientId: clientId,
 					Color:    color,
+					Score:    uint8(0),
 				})
 
 				content := ws.BuildJoinMessage(game)
@@ -113,13 +114,14 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 			if game != nil {
 				for _, p := range game.Players {
 					if p.ClientId == clientId {
-						player = &p
+						player = p
 						break
 					}
 				}
 
 				if player != nil {
 					game.BoardState[uint8(cellId)] = player.Color
+					server.updateGameScore(game, player.ClientId)
 				}
 			}
 		}
@@ -139,8 +141,43 @@ func (server *Server) updateGameStateForPlayers(game *model.Game) {
 				client.Conn.WriteJSON(content)
 			} else {
 				// remove disconnected players from the game
+				game.Players[i] = nil
 				game.Players = append(game.Players[:i], game.Players[i+1:]...)
 			}
+		}
+	}
+
+	server.endGame(game)
+
+}
+
+func (server *Server) updateGameScore(game *model.Game, playerId string) {
+	for _, p := range game.Players {
+		if p.ClientId == playerId {
+			if p.Score+1 >= game.Cells {
+				game.Winner = p
+				game.IsFinished = true
+				p.Score++
+				return
+			}
+
+			p.Score++
+		} else if p.Score > 0 {
+			p.Score--
+		}
+	}
+}
+
+func (server *Server) endGame(game *model.Game) {
+	delete(server.games, game.Id)
+	log.Printf("Game '%s' finished with '%v' as the winner", game.Id, *game.Winner)
+
+	content := ws.BuildEndMessage(game)
+	// loop through all players and send winner final message of the game
+	for _, player := range game.Players {
+		client := server.pool.Clients[player.ClientId]
+		if client != nil && client.Conn != nil {
+			client.Conn.WriteJSON(content)
 		}
 	}
 }

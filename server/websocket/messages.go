@@ -31,3 +31,16 @@ func buildGameMessage(method string, game *model.Game) Message {
 		"game":   game,
 	}
 }
+
+func BuildEndMessage(game *model.Game) Message {
+	if game.Winner != nil {
+		return Message{
+			"method": "end",
+			"winner": *game.Winner,
+		}
+	} else {
+		return Message{
+			"method": "end",
+		}
+	}
+}
