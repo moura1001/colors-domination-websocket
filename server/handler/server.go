@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,12 +13,14 @@ import (
 )
 
 type Server struct {
-	pool  *ws.Pool
-	games map[string]*model.Game
+	pool      *ws.Pool
+	games     map[string]*model.Game
+	stateLock *sync.RWMutex
 }
 
 func NewServer() *Server {
 	server := new(Server)
+	server.stateLock = &sync.RWMutex{}
 	server.games = map[string]*model.Game{}
 	server.pool = ws.NewPool(server.handleClientMessage)
 
@@ -65,11 +68,20 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 				game := &model.Game{
 					Id:         gameId,
 					Cells:      uint8(16),
-					Players:    []*model.Player{},
-					BoardState: map[uint8]string{},
+					Players:    map[uint8]*model.Player{},
+					BoardState: map[uint8]*model.CellOwner{},
 				}
 
+				for i := uint8(0); i < game.Cells; i++ {
+					game.BoardState[i] = &model.CellOwner{
+						Color:   "",
+						OwnerId: 16,
+					}
+				}
+
+				server.stateLock.Lock()
 				server.games[gameId] = game
+				server.stateLock.Unlock()
 
 				content := ws.BuildCreateMessage(game)
 				clientConn.Conn.WriteJSON(content)
@@ -81,48 +93,61 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 		gameId, okGameId := message["gameId"].(string)
 
 		if okClientId && okGameId {
+			server.stateLock.RLock()
 			game := server.games[gameId]
-			if game != nil && len(game.Players) < 3 {
-				color := map[uint8]string{0: "red", 1: "green", 2: "blue"}[uint8(len(game.Players))]
-				game.Players = append(game.Players, &model.Player{
-					ClientId: clientId,
-					Color:    color,
-					Score:    uint8(0),
-				})
 
-				content := ws.BuildJoinMessage(game)
-				// loop through all players and tell them that people has joined
-				for _, player := range game.Players {
-					server.pool.Clients[player.ClientId].Conn.WriteJSON(content)
+			if game != nil {
+				numberOfPlayers := uint8(len(game.Players))
+
+				if numberOfPlayers < 3 {
+					color := map[uint8]string{0: "red", 1: "green", 2: "blue"}[numberOfPlayers]
+					server.stateLock.RUnlock()
+
+					server.stateLock.Lock()
+					game.Players[numberOfPlayers] = &model.Player{
+						ClientId:           clientId,
+						Color:              color,
+						Score:              uint8(0),
+						QueueEntryPosition: numberOfPlayers,
+					}
+					server.stateLock.Unlock()
+
+					content := ws.BuildJoinMessage(game)
+					// loop through all players and tell them that people has joined
+					for _, player := range game.Players {
+						server.pool.Clients[player.ClientId].Conn.WriteJSON(content)
+					}
+
+					// start game
+					if len(game.Players) == 3 {
+						go server.updateGameStateForPlayers(game)
+					}
 				}
 
-				// start game
-				if len(game.Players) == 3 {
-					go server.updateGameStateForPlayers(game)
-				}
+			} else {
+				server.stateLock.RUnlock()
 			}
 
 		}
 	case method == "play":
-		clientId, okClientId := message["clientId"].(string)
+		clientId, okClientId := message["clientId"].(float64)
 		gameId, okGameId := message["gameId"].(string)
 		cellId, okCellId := message["cellId"].(float64)
 
 		if okClientId && okGameId && okCellId {
-			var player *model.Player = nil
+
+			server.stateLock.RLock()
 			game := server.games[gameId]
 			if game != nil {
-				for _, p := range game.Players {
-					if p.ClientId == clientId {
-						player = p
-						break
-					}
-				}
+
+				player := game.Players[uint8(clientId)]
+				server.stateLock.RUnlock()
 
 				if player != nil {
-					game.BoardState[uint8(cellId)] = player.Color
-					server.updateGameScore(game, player.ClientId)
+					server.updateGameScore(game, player.QueueEntryPosition, uint8(cellId))
 				}
+			} else {
+				server.stateLock.RUnlock()
 			}
 		}
 	}
@@ -141,8 +166,9 @@ func (server *Server) updateGameStateForPlayers(game *model.Game) {
 				client.Conn.WriteJSON(content)
 			} else {
 				// remove disconnected players from the game
-				game.Players[i] = nil
-				game.Players = append(game.Players[:i], game.Players[i+1:]...)
+				server.stateLock.Lock()
+				delete(game.Players, i)
+				server.stateLock.Unlock()
 			}
 		}
 	}
@@ -151,26 +177,43 @@ func (server *Server) updateGameStateForPlayers(game *model.Game) {
 
 }
 
-func (server *Server) updateGameScore(game *model.Game, playerId string) {
-	for _, p := range game.Players {
-		if p.ClientId == playerId {
-			if p.Score+1 >= game.Cells {
-				game.Winner = p
-				game.IsFinished = true
-				p.Score++
-				return
-			}
+func (server *Server) updateGameScore(game *model.Game, playerId uint8, cellId uint8) {
 
-			p.Score++
-		} else if p.Score > 0 {
-			p.Score--
+	server.stateLock.RLock()
+	players := game.Players
+	boardState := game.BoardState
+
+	previousOwnerId := boardState[cellId].OwnerId
+	previousOwner := players[previousOwnerId]
+
+	newOwner := players[playerId]
+	server.stateLock.RUnlock()
+
+	server.stateLock.Lock()
+	defer server.stateLock.Unlock()
+	if boardState[cellId].Color != newOwner.Color {
+
+		boardState[cellId].Color = newOwner.Color
+		boardState[cellId].OwnerId = playerId
+		newOwner.Score++
+
+		if newOwner.Score >= game.Cells {
+			game.Winner = newOwner
+			game.IsFinished = true
+			return
+		}
+
+		if previousOwner != nil && previousOwner.Score > 0 {
+			previousOwner.Score--
 		}
 	}
 }
 
 func (server *Server) endGame(game *model.Game) {
+	server.stateLock.Lock()
 	delete(server.games, game.Id)
-	log.Printf("Game '%s' finished with '%v' as the winner", game.Id, *game.Winner)
+	server.stateLock.Unlock()
+	log.Printf("Game '%s' finished with '%v' as the winner\n", game.Id, *game.Winner)
 
 	content := ws.BuildEndMessage(game)
 	// loop through all players and send winner final message of the game

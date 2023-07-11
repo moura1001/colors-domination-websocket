@@ -50,7 +50,7 @@ func (pool *Pool) Start() {
 
 				method, ok := message["method"].(string)
 				if ok {
-					pool.messageHandler(method, message)
+					go pool.messageHandler(method, message)
 				}
 			}
 		}
