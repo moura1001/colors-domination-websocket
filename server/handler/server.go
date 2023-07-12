@@ -41,7 +41,7 @@ func serveWs(pool *ws.Pool, w http.ResponseWriter, r *http.Request) {
 		Pool: pool,
 	}
 
-	pool.Register <- client
+	pool.Register(client)
 	client.Read()
 }
 
@@ -49,7 +49,7 @@ func (server *Server) SetupRoutes() {
 	fs := http.FileServer(http.Dir("./client/static"))
 	http.Handle("/", fs)
 
-	go server.pool.Start()
+	go server.pool.HandleBroadcast()
 
 	http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 		serveWs(server.pool, w, r)
@@ -150,6 +150,28 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 				server.stateLock.RUnlock()
 			}
 		}
+	case method == "cpu":
+		clientId, okClientId := message["clientId"].(float64)
+		gameId, okGameId := message["gameId"].(string)
+
+		if okClientId && okGameId {
+			server.stateLock.RLock()
+			game := server.games[gameId]
+
+			if game != nil {
+
+				player := game.Players[uint8(clientId)]
+				server.stateLock.RUnlock()
+
+				if player != nil {
+					server.cpuMode(game)
+				}
+
+			} else {
+				server.stateLock.RUnlock()
+			}
+
+		}
 	}
 }
 
@@ -223,4 +245,18 @@ func (server *Server) endGame(game *model.Game) {
 			client.Conn.WriteJSON(content)
 		}
 	}
+}
+
+func (server *Server) cpuMode(game *model.Game) {
+	log.Printf("Game '%s' started on cpu battle mode\n", game.Id)
+
+	content := ws.BuildCPUMessage()
+	// loop through all players and set cpu battle mode
+	for _, player := range game.Players {
+		client := server.pool.Clients[player.ClientId]
+		if client != nil && client.Conn != nil {
+			client.Conn.WriteJSON(content)
+		}
+	}
+
 }

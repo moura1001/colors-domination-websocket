@@ -2,56 +2,69 @@ package websocket
 
 import (
 	"log"
+	"sync"
 )
 
 type Pool struct {
-	Register       chan *Client
-	Unregister     chan *Client
-	Clients        map[string]*Client
-	Broadcast      chan Message
-	messageHandler OnReceivedMessageHandler
+	Clients         map[string]*Client
+	Broadcast       chan Message
+	messageHandler  OnReceivedMessageHandler
+	connectionsLock *sync.RWMutex
 }
 
 func NewPool(messageHandler OnReceivedMessageHandler) *Pool {
 	return &Pool{
-		Register:       make(chan *Client),
-		Unregister:     make(chan *Client),
-		Clients:        map[string]*Client{},
-		Broadcast:      make(chan Message),
-		messageHandler: messageHandler,
+		Clients:         map[string]*Client{},
+		Broadcast:       make(chan Message, 1000),
+		messageHandler:  messageHandler,
+		connectionsLock: &sync.RWMutex{},
 	}
 }
 
-func (pool *Pool) Start() {
-	for {
-		select {
-		case client := <-pool.Register:
-			if client.ID != "" {
-				pool.Clients[client.ID] = client
-				log.Printf("client '%s' connected", client.ID)
-				log.Println("Size of Connection Pool has been increased to: ", len(pool.Clients))
+func (pool *Pool) Register(client *Client) {
+	if client.ID != "" {
+		pool.connectionsLock.Lock()
+		pool.Clients[client.ID] = client
+		pool.connectionsLock.Unlock()
 
-				content := BuildConnectMessage(client.ID)
-				client.Conn.WriteJSON(content)
-			}
-		case client := <-pool.Unregister:
-			_, exist := pool.Clients[client.ID]
-			if exist {
-				delete(pool.Clients, client.ID)
-				log.Printf("client '%s' disconnected", client.ID)
-				log.Println("Size of Connection Pool has been decreased to: ", len(pool.Clients))
-			}
-		case message := <-pool.Broadcast:
-			log.Println("Received message: ", message)
+		log.Printf("client '%s' connected", client.ID)
+		log.Println("Size of Connection Pool has been increased to: ", len(pool.Clients))
 
-			_, exist := message["method"]
+		content := BuildConnectMessage(client.ID)
+		client.Conn.WriteJSON(content)
+	}
+}
 
-			if exist {
+func (pool *Pool) Unregister(client *Client) {
 
-				method, ok := message["method"].(string)
-				if ok {
-					go pool.messageHandler(method, message)
-				}
+	pool.connectionsLock.RLock()
+	_, exist := pool.Clients[client.ID]
+	if exist {
+		pool.connectionsLock.RUnlock()
+
+		pool.connectionsLock.Lock()
+		delete(pool.Clients, client.ID)
+		pool.connectionsLock.Unlock()
+
+		log.Printf("client '%s' disconnected", client.ID)
+		log.Println("Size of Connection Pool has been decreased to: ", len(pool.Clients))
+	} else {
+		pool.connectionsLock.RUnlock()
+	}
+
+}
+
+func (pool *Pool) HandleBroadcast() {
+	for message := range pool.Broadcast {
+		log.Println("Received message: ", message)
+
+		_, exist := message["method"]
+
+		if exist {
+
+			method, ok := message["method"].(string)
+			if ok {
+				go pool.messageHandler(method, message)
 			}
 		}
 	}

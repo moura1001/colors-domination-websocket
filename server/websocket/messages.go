@@ -44,3 +44,9 @@ func BuildEndMessage(game *model.Game) Message {
 		}
 	}
 }
+
+func BuildCPUMessage() Message {
+	return Message{
+		"method": "cpu",
+	}
+}

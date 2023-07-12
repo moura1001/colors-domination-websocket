@@ -11,6 +11,8 @@
         <button id="btnConnect">Connect to Server</button>
         <button id="btnCreate">New Game</button>
         <button id="btnJoin">Join Game</button>
+        <button id="btnStartCpu">Start Cpu</button>
+        <button id="btnStopCpu">Stop Cpu</button>
         <input type="text" id="txtGameId">
         <div id="divPlayers"></div>
         <div id="divBoard"></div>
@@ -22,11 +24,16 @@
             let queueId = null;
             let gameId = null;
             let playerColor = null;
+            let cpuMode = false;
+            let stopCpuId = null;
+            let boardCells = null;
 
             // HTML elements
             const btnConnect = document.getElementById("btnConnect");
             const btnCreate = document.getElementById("btnCreate");
             const btnJoin = document.getElementById("btnJoin");
+            const btnStartCpu = document.getElementById("btnStartCpu");
+            const btnStopCpu = document.getElementById("btnStopCpu");
             const txtGameId = document.getElementById("txtGameId");
             const divPlayers = document.getElementById("divPlayers");
             const divBoard = document.getElementById("divBoard");
@@ -71,6 +78,7 @@
                                         if(clientId === p.clientId){
                                             queueId = p.queueId;
                                             playerColor = p.color;
+                                            boardCells = Math.floor(game.cells) - 1;
                                         }
                                     }
 
@@ -120,6 +128,13 @@
                                 case "end":
                                     gameId = null;
                                     playerColor = null;
+                                    if(cpuMode || stopCpuId){
+                                        clearInterval(stopCpuId);
+                                        stopCpuId = null;
+                                        cpuMode = false;
+                                        console.log("CPU battle mode turned off.");
+                                    }
+
                                     let m2 = "The game has been ended!\n"
                                     if(response.winner){
                                         if(response.winner.clientId === clientId){
@@ -129,6 +144,21 @@
                                             m2 += "The winner of the game is the player '%s' with the '%s' color.\n";
                                             console.log(m2, response.winner.clientId, response.winner.color);
                                         }
+                                    }
+                                    break;
+                                case "cpu":
+                                    if(!cpuMode){
+                                        cpuMode = true;
+                                        console.log("The CPU battle mode will start in 2 seconds.");
+
+                                        setTimeout(() =>{
+                                            if(!stopCpuId){
+                                                stopCpuId = setInterval(() => {
+                                                    const id = Math.floor(Math.random() * (boardCells - 0 + 1) + 0)
+                                                    document.getElementById("cell-" + id).click();
+                                                }, 100);
+                                            }
+                                        }, 2000)
                                     }
                                     break;
                             }
@@ -149,6 +179,23 @@
                     if(wsConn !== null && clientId !== null && gameId !== null){
                         const payLoad = { "method": "join", "clientId": clientId, "gameId": gameId }
                         wsConn.send(JSON.stringify(payLoad))
+                    }
+                });
+
+                btnStartCpu.addEventListener("click", e => {
+                    if(wsConn !== null && clientId !== null && gameId !== null && !cpuMode && !stopCpuId){
+                        const payLoad = { "method": "cpu", "clientId": queueId, "gameId": gameId };
+                        wsConn.send(JSON.stringify(payLoad));
+                        console.log("You requested the server to activate the CPU battle mode.");
+                    }
+                });
+
+                btnStopCpu.addEventListener("click", e => {
+                    if(cpuMode || stopCpuId){
+                        clearInterval(stopCpuId);
+                        stopCpuId = null;
+                        cpuMode = false;
+                        console.log("You turned off CPU mode.");
                     }
                 });
                 
