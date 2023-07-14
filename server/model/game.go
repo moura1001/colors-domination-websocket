@@ -10,10 +10,10 @@ type Game struct {
 }
 
 type Player struct {
-	ClientId           string `json:"clientId"`
-	Color              string `json:"color"`
-	Score              uint8  `json:"-"`
-	QueueEntryPosition uint8  `json:"queueId"`
+	ClientId string `json:"clientId"`
+	Color    string `json:"color"`
+	Score    uint8  `json:"-"`
+	QueueId  uint8  `json:"queueId"`
 }
 
 type CellOwner struct {

@@ -12,16 +12,21 @@ import (
 	ws "github.com/moura1001/websocket-colors-domination/server/websocket"
 )
 
+type gameInfo struct {
+	game      *model.Game
+	stateLock *sync.RWMutex
+}
+
 type Server struct {
 	pool      *ws.Pool
-	games     map[string]*model.Game
-	stateLock *sync.RWMutex
+	games     map[string]*gameInfo
+	gamesLock *sync.RWMutex
 }
 
 func NewServer() *Server {
 	server := new(Server)
-	server.stateLock = &sync.RWMutex{}
-	server.games = map[string]*model.Game{}
+	server.gamesLock = &sync.RWMutex{}
+	server.games = map[string]*gameInfo{}
 	server.pool = ws.NewPool(server.handleClientMessage)
 
 	return server
@@ -79,9 +84,14 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 					}
 				}
 
-				server.stateLock.Lock()
-				server.games[gameId] = game
-				server.stateLock.Unlock()
+				gameInfo := &gameInfo{
+					game:      game,
+					stateLock: &sync.RWMutex{},
+				}
+
+				server.gamesLock.Lock()
+				server.games[gameId] = gameInfo
+				server.gamesLock.Unlock()
 
 				content := ws.BuildCreateMessage(game)
 				clientConn.Conn.WriteJSON(content)
@@ -93,39 +103,44 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 		gameId, okGameId := message["gameId"].(string)
 
 		if okClientId && okGameId {
-			server.stateLock.RLock()
-			game := server.games[gameId]
+			server.gamesLock.RLock()
+			gameInfo := server.games[gameId]
 
-			if game != nil {
-				numberOfPlayers := uint8(len(game.Players))
+			if gameInfo != nil {
+				server.gamesLock.RUnlock()
+
+				gameInfo.stateLock.RLock()
+				numberOfPlayers := uint8(len(gameInfo.game.Players))
 
 				if numberOfPlayers < 3 {
 					color := map[uint8]string{0: "red", 1: "green", 2: "blue"}[numberOfPlayers]
-					server.stateLock.RUnlock()
+					gameInfo.stateLock.RUnlock()
 
-					server.stateLock.Lock()
-					game.Players[numberOfPlayers] = &model.Player{
-						ClientId:           clientId,
-						Color:              color,
-						Score:              uint8(0),
-						QueueEntryPosition: numberOfPlayers,
+					gameInfo.stateLock.Lock()
+					gameInfo.game.Players[numberOfPlayers] = &model.Player{
+						ClientId: clientId,
+						Color:    color,
+						Score:    uint8(0),
+						QueueId:  numberOfPlayers,
 					}
-					server.stateLock.Unlock()
+					gameInfo.stateLock.Unlock()
 
-					content := ws.BuildJoinMessage(game)
+					content := ws.BuildJoinMessage(gameInfo.game)
 					// loop through all players and tell them that people has joined
-					for _, player := range game.Players {
+					for _, player := range gameInfo.game.Players {
 						server.pool.Clients[player.ClientId].Conn.WriteJSON(content)
 					}
 
 					// start game
-					if len(game.Players) == 3 {
-						go server.updateGameStateForPlayers(game)
+					if len(gameInfo.game.Players) == 3 {
+						go server.updateGameStateForPlayers(gameInfo)
 					}
+				} else {
+					gameInfo.stateLock.RUnlock()
 				}
 
 			} else {
-				server.stateLock.RUnlock()
+				server.gamesLock.RUnlock()
 			}
 
 		}
@@ -136,18 +151,20 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 
 		if okClientId && okGameId && okCellId {
 
-			server.stateLock.RLock()
-			game := server.games[gameId]
-			if game != nil {
+			server.gamesLock.RLock()
+			gameInfo := server.games[gameId]
+			if gameInfo != nil {
+				server.gamesLock.RUnlock()
 
-				player := game.Players[uint8(clientId)]
-				server.stateLock.RUnlock()
+				gameInfo.stateLock.RLock()
+				player := gameInfo.game.Players[uint8(clientId)]
+				gameInfo.stateLock.RUnlock()
 
 				if player != nil {
-					server.updateGameScore(game, player.QueueEntryPosition, uint8(cellId))
+					server.updateGameScore(gameInfo, player.QueueId, uint8(cellId))
 				}
 			} else {
-				server.stateLock.RUnlock()
+				server.gamesLock.RUnlock()
 			}
 		}
 	case method == "cpu":
@@ -155,73 +172,75 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 		gameId, okGameId := message["gameId"].(string)
 
 		if okClientId && okGameId {
-			server.stateLock.RLock()
-			game := server.games[gameId]
+			server.gamesLock.RLock()
+			gameInfo := server.games[gameId]
 
-			if game != nil {
+			if gameInfo != nil {
+				server.gamesLock.RUnlock()
 
-				player := game.Players[uint8(clientId)]
-				server.stateLock.RUnlock()
+				gameInfo.stateLock.RLock()
+				player := gameInfo.game.Players[uint8(clientId)]
+				gameInfo.stateLock.RUnlock()
 
 				if player != nil {
-					server.cpuMode(game)
+					server.cpuMode(gameInfo.game)
 				}
 
 			} else {
-				server.stateLock.RUnlock()
+				server.gamesLock.RUnlock()
 			}
 
 		}
 	}
 }
 
-func (server *Server) updateGameStateForPlayers(game *model.Game) {
-	for !game.IsFinished {
+func (server *Server) updateGameStateForPlayers(gameInfo *gameInfo) {
+	for !gameInfo.game.IsFinished {
 
 		time.Sleep(500 * time.Millisecond)
 
-		content := ws.BuildUpdateMessage(game)
+		content := ws.BuildUpdateMessage(gameInfo.game)
 		// loop through all players and send updated state of the game
-		for i, player := range game.Players {
+		for i, player := range gameInfo.game.Players {
 			client := server.pool.Clients[player.ClientId]
 			if client != nil && client.Conn != nil {
 				client.Conn.WriteJSON(content)
 			} else {
 				// remove disconnected players from the game
-				server.stateLock.Lock()
-				delete(game.Players, i)
-				server.stateLock.Unlock()
+				gameInfo.stateLock.Lock()
+				delete(gameInfo.game.Players, i)
+				gameInfo.stateLock.Unlock()
 			}
 		}
 	}
 
-	server.endGame(game)
+	server.endGame(gameInfo.game)
 
 }
 
-func (server *Server) updateGameScore(game *model.Game, playerId uint8, cellId uint8) {
+func (server *Server) updateGameScore(gameInfo *gameInfo, playerId uint8, cellId uint8) {
 
-	server.stateLock.RLock()
-	players := game.Players
-	boardState := game.BoardState
+	gameInfo.stateLock.RLock()
+	players := gameInfo.game.Players
+	boardState := gameInfo.game.BoardState
 
 	previousOwnerId := boardState[cellId].OwnerId
 	previousOwner := players[previousOwnerId]
 
 	newOwner := players[playerId]
-	server.stateLock.RUnlock()
+	gameInfo.stateLock.RUnlock()
 
-	server.stateLock.Lock()
-	defer server.stateLock.Unlock()
+	gameInfo.stateLock.Lock()
+	defer gameInfo.stateLock.Unlock()
 	if boardState[cellId].Color != newOwner.Color {
 
 		boardState[cellId].Color = newOwner.Color
 		boardState[cellId].OwnerId = playerId
 		newOwner.Score++
 
-		if newOwner.Score >= game.Cells {
-			game.Winner = newOwner
-			game.IsFinished = true
+		if newOwner.Score >= gameInfo.game.Cells {
+			gameInfo.game.Winner = newOwner
+			gameInfo.game.IsFinished = true
 			return
 		}
 
@@ -232,9 +251,9 @@ func (server *Server) updateGameScore(game *model.Game, playerId uint8, cellId u
 }
 
 func (server *Server) endGame(game *model.Game) {
-	server.stateLock.Lock()
+	server.gamesLock.Lock()
 	delete(server.games, game.Id)
-	server.stateLock.Unlock()
+	server.gamesLock.Unlock()
 	log.Printf("Game '%s' finished with '%v' as the winner\n", game.Id, *game.Winner)
 
 	content := ws.BuildEndMessage(game)
