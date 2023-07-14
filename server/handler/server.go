@@ -18,13 +18,15 @@ type gameInfo struct {
 }
 
 type Server struct {
-	pool      *ws.Pool
-	games     map[string]*gameInfo
-	gamesLock *sync.RWMutex
+	pool              *ws.Pool
+	games             map[string]*gameInfo
+	gamesLock         *sync.RWMutex
+	maxPlayersPerGame uint8
 }
 
 func NewServer() *Server {
 	server := new(Server)
+	server.maxPlayersPerGame = 3
 	server.gamesLock = &sync.RWMutex{}
 	server.games = map[string]*gameInfo{}
 	server.pool = ws.NewPool(server.handleClientMessage)
@@ -110,18 +112,27 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 				server.gamesLock.RUnlock()
 
 				gameInfo.stateLock.RLock()
-				numberOfPlayers := uint8(len(gameInfo.game.Players))
 
-				if numberOfPlayers < 3 {
-					color := map[uint8]string{0: "red", 1: "green", 2: "blue"}[numberOfPlayers]
+				if uint8(len(gameInfo.game.Players)) < server.maxPlayersPerGame {
+
+					availableQueueId := uint8(0)
+					for i := uint8(0); i < server.maxPlayersPerGame; i++ {
+						_, exist := gameInfo.game.Players[i]
+						if !exist {
+							availableQueueId = i
+							break
+						}
+					}
+
+					color := map[uint8]string{0: "red", 1: "green", 2: "blue"}[availableQueueId]
 					gameInfo.stateLock.RUnlock()
 
 					gameInfo.stateLock.Lock()
-					gameInfo.game.Players[numberOfPlayers] = &model.Player{
+					gameInfo.game.Players[availableQueueId] = &model.Player{
 						ClientId: clientId,
 						Color:    color,
 						Score:    uint8(0),
-						QueueId:  numberOfPlayers,
+						QueueId:  availableQueueId,
 					}
 					gameInfo.stateLock.Unlock()
 
@@ -132,9 +143,19 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 					}
 
 					// start game
-					if len(gameInfo.game.Players) == 3 {
+					gameInfo.stateLock.RLock()
+					if uint8(len(gameInfo.game.Players)) == server.maxPlayersPerGame && !gameInfo.game.IsStarted {
+						gameInfo.stateLock.RUnlock()
+
+						gameInfo.stateLock.Lock()
+						gameInfo.game.IsStarted = true
+						gameInfo.stateLock.Unlock()
+
 						go server.updateGameStateForPlayers(gameInfo)
+					} else {
+						gameInfo.stateLock.RUnlock()
 					}
+
 				} else {
 					gameInfo.stateLock.RUnlock()
 				}
@@ -195,6 +216,8 @@ func (server *Server) handleClientMessage(method string, message ws.Message) {
 }
 
 func (server *Server) updateGameStateForPlayers(gameInfo *gameInfo) {
+	log.Printf("Starting updates for the game '%s'\n", gameInfo.game.Id)
+
 	for !gameInfo.game.IsFinished {
 
 		time.Sleep(500 * time.Millisecond)

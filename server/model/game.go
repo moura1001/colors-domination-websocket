@@ -7,6 +7,7 @@ type Game struct {
 	BoardState map[uint8]*CellOwner `json:"state"`
 	IsFinished bool                 `json:"-"`
 	Winner     *Player              `json:"-"`
+	IsStarted  bool                 `json:"-"`
 }
 
 type Player struct {
